@@ -1,0 +1,483 @@
+---
+title: "Netflix Viewing Analysis"
+author: "Yichen Tan, Minchao Xiong"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: false
+    embed-resources: true
+---
+
+## 1. Introduction
+
+### 1.1 Problem Statement
+
+Netflix, as one of the most popular streaming platforms in the world, releases many movies and shows across different countries.Specifically, in the first half of 2025, people around the world spent total 95 billion hours on Netflix. But we are more curious about : What content attracts people in Netflix? This project investigates what people have been watching on Netflix and asks the following main question: How does Netflix viewing performance differ between movies and shows, globally available and non-globally available titles, and newer versus older releases?
+
+This topic is interesting because both of us are users of Netflix and we are curious about what other people around the world interest in. By studying views and hours viewed, we can better understand which types of content attract more audience attention. This matters because streaming platforms make many business decisions based on audience engagement.
+
+### 1.2 Short Explanation of My Plan
+
+We used the TidyTuesday Netflix viewing dataset from July 29, 2025. The dataset combines Netflix viewing data from late 2023 through the first half of 2025. It includes two data files, `movies.csv` and `shows.csv`. Netflix’s engagement reports summarize the number of hours users spent watching each show and movie during six-month reporting periods, and the first-half 2025 report captures about 99% of Netflix viewing during that period.
+
+The analysis use data wrangling and exploratory data analysis methods. After the movie and show datasets imported and cleaned, we will analyze the dataset from several aspects with the use of tables and visualizations.
+
+### 1.3 Analytic Approach
+
+The proposed approach is to use exploratory data analysis. We will clean and combine the movie and show datasets, create comparison variables such as content type and release year, and then use summary tables and visualizations to compare viewing performance across different groups. This approach can partially address the problem by showing patterns in views and hours viewed across movies, shows, global availability, and release periods.
+
+### 1.4 Values For Consumers
+
+This analysis will help the reader understand which types of Netflix content receive stronger audience attention.By analyzing these questions related to viewing behavior , we can help explain how audiences respond to different types of streaming content. For Netflix, understanding viewing performance can support decisions about content investment, global release strategy and future programming. For viewers and media researchers, the data also provides a useful way to observe broader patterns in digital entertainment consumption.
+
+## 2. Packages Required
+
+### 2.1 Packages Used
+
+```{r}
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(janitor)
+library(knitr)
+```
+
+### 2.2 Explanation
+
+-   `tidyverse`: For importing, cleaning, transforming, summarizing, and visualizing the Netflix viewing data. It includes important tools such as `readr`, `dplyr`, and `ggplot2`.
+
+-   `readr`: Used for reading the two CSV files, `movies.csv` and `shows.csv`, directly from the GitHub raw links.
+
+-   `dplyr`: Used in data wrangling steps, such as filtering, grouping, creating new variables, combining datasets, and calculating summary statistics.
+
+-   `ggplot2`: To create visualizations that compare Netflix viewing patterns across movies, shows, global availability, release years, and report periods.
+
+-   `lubridate`: Used for working with date variables, especially converting `release_date` into a date format and creating a new `release_year` variable.
+
+-   `janitor`: Used for cleaning variable names and creating simple, readable summary tables during the data preparation process.
+
+-   `knitr`: Used to generate a reproducible Quarto HTML report by combining written explanations, code, tables, and plots into one final document.
+
+## 3. Data Preparation
+
+### 3.1 Data Import
+
+-   Original source: https://github.com/rfordatascience/tidytuesday/blob/main/data/2025/2025-07-29/readme.md
+
+```{r}
+movies <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-07-29/movies.csv')
+shows <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-07-29/shows.csv')
+```
+
+### 3.2 Explanation of Data
+
+The source data comes from Netflix engagement reports collected in the TidyTuesday project in July 29, 2025. The original purpose of the data is to show what people watched on Netflix during different reporting periods, then used for Netflix itself to continue to invest in a variety of quality titles for various moods and tastes and make them great.
+
+The dataset includes two CSV files: `movies.csv` and `shows.csv`. Both files contain 8 variables `source`, `report`, `title`, `available_globally`, `release_date`, `hours_viewed`, `runtime`, and `views`. Some values are missing in two files,especially for release date. The missing values for movies are 29396 and 14033 for shows. That's because not every title has the available and precise release information.
+
+```{r}
+dplyr:: glimpse(movies)
+```
+
+```{r}
+dplyr:: glimpse(shows)
+```
+
+```{r}
+movies%>%
+  summarise(
+    total_rows = n(),
+    missing_title = sum(is.na(title)),
+    missing_report = sum(is.na(report)),
+    missing_available_globally = sum(is.na(available_globally)),
+    missing_release_date = sum(is.na(release_date)),
+    missing_hours_viewed = sum(is.na(hours_viewed)),
+    missing_runtime = sum(is.na(runtime)),
+    missing_views = sum(is.na(views))
+  )
+```
+
+```{r}
+shows%>%
+  summarise(
+    total_rows = n(),
+    missing_title = sum(is.na(title)),
+    missing_report = sum(is.na(report)),
+    missing_available_globally = sum(is.na(available_globally)),
+    missing_release_date = sum(is.na(release_date)),
+    missing_hours_viewed = sum(is.na(hours_viewed)),
+    missing_runtime = sum(is.na(runtime)),
+    missing_views = sum(is.na(views))
+  )
+```
+
+### 3.3 Data Cleaning
+
+step1:Since movies and shows are stored separately, We combined them into one dataset and created a new variable to identify whether each row is a movie or a show.
+
+```{r}
+movies_clean <- movies %>%
+  mutate(content_type = "Movie")
+
+shows_clean <- shows %>%
+  mutate(content_type = "Show")
+```
+
+step2:After creating the `content_type` variable, We combined the two datasets into one Netflix dataset. Since the two datasets have the same general structure, We use `bind_rows()` to stack the movie and show records together.
+
+```{r}
+netflix_clean <- bind_rows(movies_clean, shows_clean)
+```
+
+step3:Then, We cleaned the variable names and created a new variable called `release_year`. The `clean_names()` function makes variable names easier to use in R. The `release_date` variable is converted into a date format, and `release_year` is created so that the analysis can compare older and newer Netflix titles.
+
+```{r}
+netflix_clean <- netflix_clean %>%
+  clean_names() %>%
+  mutate(
+    release_date = ymd(release_date),
+    release_year = year(release_date)
+  )
+```
+
+step4:We found that there are too many missing values for release year for both movies and shows. So, lastly, we create a version of the data for release-year analysis. This dataset removes rows where `release_year` is missing, but only for analysis related to release year. The main dataset, `netflix_clean`, is still kept for the rest of the analysis. The remaining missing values for other variables will not affect the analysis and we can use `na.rm = TRUE`.
+
+```{r}
+netflix_with_release_year <- netflix_clean %>%
+  filter(!is.na(release_year))
+```
+
+### 3.4 Final Data Preview
+
+```{r}
+head(netflix_clean)
+```
+
+```{r}
+head(netflix_with_release_year)
+```
+
+### 3.5 Summary Information
+
+```{r}
+#| echo: false
+data_description <- tibble(
+  Dataset = c(
+    "netflix_clean",
+    "netflix_clean",
+    "netflix_clean",
+    "netflix_clean",
+    "netflix_clean",
+    "netflix_clean",
+    "netflix_clean",
+    "netflix_clean"
+  ),
+  Variable = c(
+    "content_type",
+    "title",
+    "report",
+    "available_globally",
+    "release_date",
+    "release_year",
+    "hours_viewed",
+    "views"
+  ),
+  Class = c(
+    "character",
+    "character",
+    "character",
+    "logical",
+    "Date",
+    "numeric",
+    "numeric",
+    "numeric"
+  ),
+  Description = c(
+    "Identifies whether each title is a movie or a show",
+    "Name of the Netflix movie or show",
+    "Netflix engagement report period",
+    "Shows whether the title was available globally",
+    "Original release date of the title",
+    "Year extracted from release_date for time-based comparison",
+    "Total number of hours viewed during the report period",
+    "Estimated number of views during the report period"
+  )
+)
+knitr::kable(data_description)
+```
+
+## 4. Exploratory Data Analysis
+
+**Question 1:Do Netflix movies and shows show different viewing trends across Netflix report periods since 2023?**
+
+-   Data source: `netflix_clean`
+-   Figure description:
+
+### Table 1:Median by report period and content type
+
+```{r}
+content_type_median_trend <- netflix_clean %>%
+  group_by(report, content_type) %>%
+  summarise(
+    titles = n(),
+    median_views = median(views, na.rm = TRUE),
+    median_hours = median(hours_viewed, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+knitr::kable(
+  content_type_median_trend,
+  col.names = c("Report Period", "Type", "Titles", "Median Views", "Median Hours")
+)
+```
+
+### Plot 1: Average views trend since 2023
+
+```{r}
+#| echo: false
+
+content_type_mean_trend <- netflix_clean %>%
+  group_by(report, content_type) %>%
+  summarise(
+    mean_views = mean(views, na.rm = TRUE),
+    mean_hours = mean(hours_viewed, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+ggplot(content_type_mean_trend, aes(x = report, y = mean_views, group = content_type)) +
+  geom_line(aes(linetype = content_type), linewidth = 1) +
+  geom_point(aes(shape = content_type), size = 3) +
+  labs(
+    title = "Average Netflix Views by Content Type Across Report Periods",
+    x = "Report Period",
+    y = "Average Views",
+    linetype = "Content Type",
+    shape = "Content Type") +
+  theme_minimal()
+```
+
+### Plot 2: Average hours viewed trend since 2023
+
+```{r}
+ggplot(content_type_mean_trend, aes(x = report, y = mean_hours, group = content_type)) +
+  geom_line(aes(linetype = content_type), linewidth = 1) +
+  geom_point(aes(shape = content_type), size = 3) +
+  labs(
+    title = "Average Netflix Hours Viewed by Content Type Across Report Periods",
+    x = "Report Period",
+    y = "Average Hours Viewed",
+    linetype = "Content Type",
+    shape = "Content Type") +
+  theme_minimal()
+```
+
+-   Summary of Findings:
+
+The results show that movies and shows have different viewing patterns over time. Shows have higher median views and much higher median hours viewed in every report period, which means a typical show usually receives stronger engagement than a typical movie.
+
+However, movies have higher average views across all report periods, especially in 2024 July–December. This may be caused by a few very popular movies increasing the average.
+
+For hours viewed, shows are consistently much higher than movies. This is reasonable because shows usually have multiple episodes and longer total viewing time. Overall, movies perform better in average views, while shows perform better in viewing time.
+
+**This pattern suggests that more people tend to watch movies but shows are more sticky for viewers**
+
+**Question 2: Do newer Netflix releases attract more audience attention than older titles?**
+
+-   Data source: `netflix_with_release_year`
+-   Figure description:
+
+### Table 2: Average views and hours viewed by release year
+
+```{r}
+release_year_summary <- netflix_with_release_year %>%
+  group_by(release_year) %>%
+  summarise(
+    titles = n(),
+    average_views = mean(views, na.rm = TRUE),
+    average_hours = mean(hours_viewed, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+knitr::kable(
+  release_year_summary,
+  col.names = c(
+    "Release Year",
+    "Titles",
+    "Average Views",
+    "Average Hours Viewed"
+  )
+)
+```
+
+### Plot 3: Average views trend by release year
+
+```{r}
+ggplot(release_year_summary,
+       aes(x = release_year,
+           y = average_views)) +
+
+  geom_line(linewidth = 1) +
+
+  geom_point(size = 3) +
+
+  labs(
+    title = "Average Netflix Views by Release Year",
+    x = "Release Year",
+    y = "Average Views"
+  ) +
+
+  theme_minimal()
+```
+
+### Plot 4: Average hours viewed trend by release year
+
+```{r}
+ggplot(release_year_summary,
+       aes(x = release_year,
+           y = average_hours)) +
+
+  geom_line(linewidth = 1) +
+
+  geom_point(size = 3) +
+
+  labs(
+    title = "Average Netflix Hours Viewed by Release Year",
+    x = "Release Year",
+    y = "Average Hours Viewed"
+  ) +
+
+  theme_minimal()
+```
+
+-   Summary of Findings:
+
+The results show that newer Netflix releases generally attract much stronger audience attention than older titles. Both average views and average hours viewed increase significantly for more recent release years.
+
+From the plots, titles released between 2015 and 2022 usually maintain relatively stable viewing performance. However, beginning in 2023, both average views and average hours viewed rise sharply. The increase becomes especially noticeable in 2024 and 2025.
+
+For average views, titles released in 2024 and 2025 receive far more audience attention compared to titles released in earlier years. A similar pattern appears in average hours viewed, where recent releases generate substantially longer viewing time.
+
+This trend may be caused by stronger Netflix promotion strategies, higher production quality, social media popularity, and increased global discussion surrounding newer Netflix content.
+
+Overall, the analysis suggests that recent Netflix releases are much more successful in attracting viewers and maintaining audience engagement.
+
+**This pattern suggests that Netflix audiences strongly prefer newer and recently released content.**
+
+**Question 3:** Does global availability increase Netflix audience engagement?
+
+-   Data source: `netflix_clean`
+
+-   Figure description:
+
+### Table 3: Median views and hours viewed by report period and global availability
+
+```{r}
+global_summary <- netflix_clean %>%
+  filter(available_globally %in% c("Yes", "No"))%>%
+  group_by(report, available_globally) %>%
+  summarise(
+    titles = n(),
+    median_views = median(views, na.rm = TRUE),
+    median_hours = median(hours_viewed, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+knitr::kable(
+  global_summary,
+  col.names = c(
+    "Report Period",
+    "Global Availability",
+    "Titles",
+    "Median Views",
+    "Median Hours Viewed"
+  )
+)
+```
+
+### Plot 5: Average views trend by global availability since 2023
+
+```{r}
+global_mean_trend <- netflix_clean %>%
+  filter(available_globally %in% c("Yes", "No")) %>%
+  group_by(report, available_globally) %>%
+  summarise(
+    mean_views = mean(views, na.rm = TRUE),
+    mean_hours = mean(hours_viewed, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(global_mean_trend,
+       aes(x = report,
+           y = mean_views,
+           group = available_globally)) +
+  geom_line(aes(linetype = available_globally),
+            linewidth = 1) +
+  geom_point(aes(shape = available_globally),
+             size = 3) +
+  labs(
+    title = "Average Netflix Views by Global Availability Across Report Periods",
+    x = "Report Period",
+    y = "Average Views",
+    linetype = "Global Availability",
+    shape = "Global Availability"
+  ) +
+  theme_minimal()
+```
+
+### Plot 6: Average hours viewed trend by global availability since 2023
+
+```{r}
+ggplot(global_mean_trend,
+       aes(x = report,
+           y = mean_hours,
+           group = available_globally)) +
+  geom_line(aes(linetype = available_globally),
+            linewidth = 1) +
+  geom_point(aes(shape = available_globally),
+             size = 3) +
+  labs(
+    title = "Average Netflix Hours Viewed by Global Availability Across Report Periods",
+    x = "Report Period",
+    y = "Average Hours Viewed",
+    linetype = "Global Availability",
+    shape = "Global Availability"
+  ) +
+  theme_minimal()
+```
+
+-   Summary of Findings:
+
+The results show that globally available Netflix titles generally achieve much stronger audience engagement than non-global titles across all report periods.
+
+From both plots, titles that are available globally consistently receive higher average views and significantly higher average hours viewed compared to titles that are not globally available. This suggests that worldwide distribution allows Netflix content to reach a much larger audience.
+
+In addition, globally available titles maintain relatively stable and high viewing performance from 2023 to 2025. The gap between global and non-global titles remains large throughout all report periods.
+
+For hours viewed, globally available titles perform especially well, indicating that audiences not only watch these titles more often, but also spend more time engaging with them.
+
+This trend may be caused by Netflix’s international release strategy, where globally distributed content benefits from broader promotion, stronger social media discussion, and easier accessibility across countries.
+
+Overall, globally available Netflix titles tend to attract larger audiences and generate longer viewing time than non-global content.
+
+**This pattern suggests that Netflix’s global distribution strategy plays an important role in increasing audience attention and viewing engagement.**
+
+## 5. Summary
+
+This analysis explored viewing behavior on Netflix by examining how content type, release year, and global availability influence audience engagement. The project was motivated by a broader interest in understanding what kinds of Netflix titles attract the most viewers and generate the longest viewing time across different reporting periods.
+
+To address these questions, we used the Netflix engagement datasets from TidyTuesday, including both movie and show viewing reports from July 2023 to the first half of 2025. After cleaning and combining the datasets, we created new variables such as content_type and release_year and conducted exploratory data analysis using summary tables and visualizations. The analysis focused on comparing average views and hours viewed across content categories, release years, and global availability groups.
+
+Our analysis revealed several meaningful viewing patterns. First, Netflix shows generally generate stronger audience stickness than movies in terms of viewing hours, likely because episodic content encourages longer watch time and repeated viewing. However, movies achieve higher average views, suggesting that blockbuster films can quickly attract large audiences even if total engagement time is shorter.
+
+Second, newer Netflix releases consistently outperform older titles in both average views and average hours viewed. Beginning around 2023, audience attention toward recently released content increased sharply, especially for titles released in 2024 and 2025. This suggests that Netflix audiences strongly prefer newer and trending content, likely influenced by stronger promotion, social media discussion, and recommendation algorithms.
+
+Third, globally available Netflix titles perform substantially better than non-global titles across all reporting periods. Titles distributed worldwide receive higher average views and significantly longer viewing time, indicating that broader accessibility allows Netflix content to reach much larger audiences and maintain stronger engagement.
+
+These findings have practical value for streaming platforms and media producers. For Netflix, the results suggest that recent releases, globally distributed content, and highly engaging episodic series are especially important for attracting and retaining viewers. The analysis may also help explain how platform strategies such as global releases and recommendation systems contribute to audience behavior and streaming success.
+
+However, this analysis also has limitations. The project mainly relies on aggregated engagement statistics rather than individual-level viewer data, which limits the ability to explain why audiences prefer certain titles. In addition, some release-year information was missing and had to be removed during data cleaning. Future research could incorporate genre information, regional audience differences, or recommendation-system data to better understand long-term Netflix viewing behavior.
